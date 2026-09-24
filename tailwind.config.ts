@@ -4,7 +4,7 @@ export default {
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
-      colors: { ink: "#172026", muted: "#66727d", canvas: "#f6f8f9", line: "#e5eaed", brand: "#236b5e", accent: "#e7f4ef" },
+      colors: { ink: "#2d2d2d", muted: "#716b67", canvas: "#fff8f3", line: "#eadfd7", brand: "#f56600", accent: "#fff0e5" },
       boxShadow: { soft: "0 8px 30px rgba(23,32,38,.06)" },
     },
   },
