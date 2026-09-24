@@ -1,0 +1,7 @@
+import { eq } from "drizzle-orm";
+import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
+import { activity, audit, db, kanbanBoards, kanbanColumns, tasks } from "@/lib/domain";
+import { z } from "zod";
+const input = z.object({ taskId: z.string().uuid(), columnId: z.string().uuid() });
+export async function POST(request: Request) { try { const user = await requireUser(); const parsed = input.safeParse(await request.json()); if (!parsed.success) return NextResponse.json({ error: "Invalid move" }, { status: 400 }); const task = (await db.select().from(tasks).where(eq(tasks.id, parsed.data.taskId)).limit(1))[0]; const column = (await db.select({ column: kanbanColumns, board: kanbanBoards }).from(kanbanColumns).innerJoin(kanbanBoards, eq(kanbanColumns.boardId, kanbanBoards.id)).where(eq(kanbanColumns.id, parsed.data.columnId)).limit(1))[0]; if (!task || !column || column.board.ownerUserId !== user.id || task.assignedToUserId !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 }); await db.update(tasks).set({ columnId: column.column.id, updatedAt: new Date(), completedAt: column.column.title.toLowerCase() === "done" ? new Date() : null }).where(eq(tasks.id, task.id)); await activity(task.id, user.id, "STATUS_CHANGED", { columnId: column.column.id }); await audit(user.id, "TASK_MOVED", "TASK", task.id, { columnId: column.column.id }); return NextResponse.json({ ok: true }); } catch { return NextResponse.json({ error: "Unable to move task" }, { status: 500 }); } }

@@ -1,0 +1,5 @@
+import { changePassword } from "./actions";
+import { requireUser } from "@/lib/auth";
+import { Button, Input } from "@/components/ui";
+
+export default async function ChangePasswordPage() { await requireUser(); return <main className="flex min-h-screen items-center justify-center px-6"><div className="w-full max-w-sm"><h1 className="text-3xl font-semibold tracking-tight">Set your password</h1><p className="mt-2 text-sm leading-6 text-muted">For security, choose a new password before entering the workspace.</p><form action={changePassword} className="mt-6 space-y-4 rounded-2xl border border-line bg-white p-6 shadow-soft"><label className="block text-sm font-medium">New password<Input name="password" type="password" minLength={12} required className="mt-2" /></label><label className="block text-sm font-medium">Confirm password<Input name="confirmPassword" type="password" minLength={12} required className="mt-2" /></label><Button className="w-full">Update password</Button></form></div></main>; }

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS "boards_owner_unique_idx" ON "kanban_boards" USING btree ("owner_user_id");

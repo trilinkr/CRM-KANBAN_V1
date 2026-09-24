@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS "attendance_one_open_session_idx" ON "attendance_sessions" USING btree ("user_id") WHERE "attendance_sessions"."check_out_at" is null;
