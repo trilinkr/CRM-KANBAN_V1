@@ -9,6 +9,11 @@ function getDateParts(date: Date, timeZone: string): DateParts {
   return Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, Number(part.value)])) as unknown as DateParts;
 }
 
+export function getOrgDateKey(date: Date, timeZone = getOrgTimezone()) { const parts = getDateParts(date, timeZone); return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`; }
+export function getOrgCalendarParts(date = new Date(), timeZone = getOrgTimezone()) { return getDateParts(date, timeZone); }
+export function getOrgMonthKeys(now = new Date(), timeZone = getOrgTimezone()) { const current = getDateParts(now, timeZone); const keys: string[] = []; const daysInMonth = new Date(Date.UTC(current.year, current.month, 0)).getUTCDate(); for (let day = 1; day <= daysInMonth; day += 1) keys.push(`${current.year}-${String(current.month).padStart(2, "0")}-${String(day).padStart(2, "0")}`); return keys; }
+export function isScheduledWorkday(dateKey: string) { const [year, month, day] = dateKey.split("-").map(Number); const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay(); if (weekday === 0) return false; if (weekday !== 6) return true; const saturdayNumber = Math.ceil(day / 7); return saturdayNumber === 2 || saturdayNumber === 4; }
+
 function zonedPartsToUtc(parts: DateParts, timeZone: string) {
   const wallClock = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
   const observed = getDateParts(new Date(wallClock), timeZone);
@@ -25,9 +30,19 @@ export function getOrgDayRange(now = new Date(), timeZone = getOrgTimezone()) {
   return { start, end };
 }
 
+export function getOrgMonthRange(now = new Date(), timeZone = getOrgTimezone()) {
+  const current = getDateParts(now, timeZone);
+  const start = zonedPartsToUtc({ year: current.year, month: current.month, day: 1, hour: 0, minute: 0, second: 0 }, timeZone);
+  const nextMonth = new Date(Date.UTC(current.year, current.month, 1));
+  const next = getDateParts(nextMonth, "UTC");
+  const end = zonedPartsToUtc({ year: next.year, month: next.month, day: next.day, hour: 0, minute: 0, second: 0 }, timeZone);
+  return { start, end };
+}
+
 export function formatOrgTime(date: Date, timeZone = getOrgTimezone()) { return new Intl.DateTimeFormat("en-IN", { timeZone, hour: "2-digit", minute: "2-digit", hour12: true }).format(date); }
 export function formatOrgDate(date: Date, timeZone = getOrgTimezone()) { return new Intl.DateTimeFormat("en-IN", { timeZone, day: "2-digit", month: "2-digit", year: "numeric" }).format(date); }
 export function formatOrgDateTime(date: Date, timeZone = getOrgTimezone()) { return new Intl.DateTimeFormat("en-IN", { timeZone, dateStyle: "medium", timeStyle: "short" }).format(date); }
+export function formatOrgMonth(date = new Date(), timeZone = getOrgTimezone()) { return new Intl.DateTimeFormat("en-IN", { timeZone, month: "long", year: "numeric" }).format(date); }
 
 export function formatOrgDateTimeLocal(date: Date, timeZone = getOrgTimezone()) {
   const parts = getDateParts(date, timeZone);
