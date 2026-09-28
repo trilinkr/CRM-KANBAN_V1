@@ -12,6 +12,7 @@ const leadStatus = z.enum(["NEW", "INTRO_SENT", "FOLLOW_UP", "WHATSAPP", "ONBOAR
 const leadType = z.enum(["EMPLOYER", "CONSULTANT"]);
 const optionalEmail = z.string().trim().email().or(z.literal(""));
 const leadInput = z.object({ type: leadType, ownerUserId: z.string().uuid(), companyName: z.string().trim().min(1).max(180), contactName: z.string().trim().min(1).max(140), phone: z.string().trim().min(5).max(40), email: optionalEmail, linkedinUrl: z.string().trim().url().or(z.literal("")), status: leadStatus, comments: z.string().trim().max(5000) });
+const leadUpdateInput = leadInput.omit({ comments: true }).extend({ leadId: z.string().uuid() });
 
 async function requireLeadTypeAccess(userId: string, role: string, type: LeadType) { if (!(await canAccessLeadType(userId, role, type))) throw new Error("You do not have access to this lead segment"); }
 async function requireLead(leadId: string) { const lead = (await db.select().from(leads).where(eq(leads.id, leadId)).limit(1))[0]; if (!lead) throw new Error("Lead not found"); return lead; }
@@ -41,6 +42,22 @@ export async function updateLeadStatus(formData: FormData) {
   await audit(user.id, "LEAD_STATUS_CHANGED", "LEAD", lead.id, { from: lead.status, to: status.data });
   revalidatePath("/leads");
   revalidatePath(`/leads/${lead.id}`);
+}
+
+export async function updateLead(formData: FormData) {
+  const user = await requireUser();
+  const parsed = leadUpdateInput.safeParse({ leadId: formData.get("leadId"), type: formData.get("type"), ownerUserId: formData.get("ownerUserId"), companyName: formData.get("companyName"), contactName: formData.get("contactName"), phone: formData.get("phone"), email: formData.get("email") ?? "", linkedinUrl: formData.get("linkedinUrl") ?? "", status: formData.get("status") });
+  if (!parsed.success) throw new Error("Invalid lead details");
+  const currentLead = await requireLead(parsed.data.leadId);
+  await requireLeadTypeAccess(user.id, user.role, currentLead.type);
+  await requireLeadTypeAccess(user.id, user.role, parsed.data.type);
+  const owner = (await db.select({ id: users.id }).from(users).where(and(eq(users.id, parsed.data.ownerUserId), eq(users.active, true))).limit(1))[0];
+  if (!owner) throw new Error("Lead owner must be an active portal user");
+  await db.update(leads).set({ type: parsed.data.type, ownerUserId: owner.id, companyName: parsed.data.companyName, contactName: parsed.data.contactName, phone: parsed.data.phone, email: parsed.data.email || null, linkedinUrl: parsed.data.linkedinUrl || null, status: parsed.data.status, updatedAt: new Date() }).where(eq(leads.id, currentLead.id));
+  await audit(user.id, "LEAD_UPDATED", "LEAD", currentLead.id, { fromType: currentLead.type, toType: parsed.data.type, fromStatus: currentLead.status, toStatus: parsed.data.status, ownerUserId: owner.id });
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${currentLead.id}`);
+  redirect(`/leads/${currentLead.id}`);
 }
 
 export async function addLeadComment(formData: FormData) {
