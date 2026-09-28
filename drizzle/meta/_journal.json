@@ -36,6 +36,13 @@
       "when": 1790593874795,
       "tag": "0004_silky_harpoon",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790595267000,
+      "tag": "0005_chat_rooms",
+      "breakpoints": true
     }
   ]
 }
