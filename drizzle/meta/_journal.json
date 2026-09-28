@@ -43,6 +43,13 @@
       "when": 1790595267000,
       "tag": "0005_chat_rooms",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790597000000,
+      "tag": "0006_leads",
+      "breakpoints": true
     }
   ]
 }
