@@ -9,6 +9,7 @@ import { chatMessages, chatRoomMembers, chatRooms, db, notify, users } from "@/l
 
 const messageInput = z.object({ roomId: z.string().uuid(), body: z.string().trim().min(1, "Message cannot be empty").max(4000) });
 const privateRoomInput = z.object({ userId: z.string().uuid() });
+const groupInput = z.object({ name: z.string().trim().min(2).max(80), memberIds: z.array(z.string().uuid()).max(50) });
 
 async function accessibleRoom(roomId: string, userId: string) {
   return (await db.select({ room: chatRooms }).from(chatRoomMembers).innerJoin(chatRooms, eq(chatRoomMembers.roomId, chatRooms.id)).where(and(eq(chatRoomMembers.roomId, roomId), eq(chatRoomMembers.userId, userId))).limit(1))[0]?.room;
@@ -41,6 +42,20 @@ export async function createPrivateRoom(formData: FormData) {
     room = (await db.insert(chatRooms).values({ name: target.name, type: "PRIVATE", directKey, createdByUserId: user.id }).returning())[0];
     await db.insert(chatRoomMembers).values([{ roomId: room.id, userId: user.id }, { roomId: room.id, userId: target.id }]);
   }
+  revalidatePath("/chat");
+  redirect(`/chat?room=${room.id}`);
+}
+
+export async function createGroupRoom(formData: FormData) {
+  const user = await requireUser();
+  const parsed = groupInput.safeParse({ name: formData.get("name"), memberIds: formData.getAll("memberIds").map(String) });
+  if (!parsed.success) throw new Error("Enter a group name and choose valid members");
+  const memberIds = [...new Set([user.id, ...parsed.data.memberIds])];
+  const activeMembers = await db.select({ id: users.id }).from(users).where(and(eq(users.active, true)));
+  const activeIds = new Set(activeMembers.map((member) => member.id));
+  if (memberIds.some((id) => !activeIds.has(id))) throw new Error("One or more selected members are unavailable");
+  const room = (await db.insert(chatRooms).values({ name: parsed.data.name, type: "GROUP", createdByUserId: user.id }).returning())[0];
+  await db.insert(chatRoomMembers).values(memberIds.map((userId) => ({ roomId: room.id, userId })));
   revalidatePath("/chat");
   redirect(`/chat?room=${room.id}`);
 }

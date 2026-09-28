@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 export const roleEnum = pgEnum("role", ["ADMIN", "MEMBER"]);
 export const priorityEnum = pgEnum("priority", ["LOW", "MEDIUM", "HIGH", "URGENT"]);
 export const leaveStatusEnum = pgEnum("leave_status", ["LEAVE", "PRESENT"]);
-export const chatRoomTypeEnum = pgEnum("chat_room_type", ["TEAM", "PRIVATE"]);
+export const chatRoomTypeEnum = pgEnum("chat_room_type", ["TEAM", "PRIVATE", "GROUP"]);
 export const leadTypeEnum = pgEnum("lead_type", ["EMPLOYER", "CONSULTANT"]);
 export const leadStatusEnum = pgEnum("lead_status", ["NEW", "INTRO_SENT", "FOLLOW_UP", "WHATSAPP", "ONBOARDED", "DROPPED"]);
 
