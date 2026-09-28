@@ -11,17 +11,19 @@ import { canAccessLeadType, type LeadType } from "@/lib/leads";
 const leadStatus = z.enum(["NEW", "INTRO_SENT", "FOLLOW_UP", "WHATSAPP", "ONBOARDED", "DROPPED"]);
 const leadType = z.enum(["EMPLOYER", "CONSULTANT"]);
 const optionalEmail = z.string().trim().email().or(z.literal(""));
-const leadInput = z.object({ type: leadType, companyName: z.string().trim().min(1).max(180), contactName: z.string().trim().min(1).max(140), phone: z.string().trim().min(5).max(40), email: optionalEmail, linkedinUrl: z.string().trim().url().or(z.literal("")), status: leadStatus, comments: z.string().trim().max(5000) });
+const leadInput = z.object({ type: leadType, ownerUserId: z.string().uuid(), companyName: z.string().trim().min(1).max(180), contactName: z.string().trim().min(1).max(140), phone: z.string().trim().min(5).max(40), email: optionalEmail, linkedinUrl: z.string().trim().url().or(z.literal("")), status: leadStatus, comments: z.string().trim().max(5000) });
 
 async function requireLeadTypeAccess(userId: string, role: string, type: LeadType) { if (!(await canAccessLeadType(userId, role, type))) throw new Error("You do not have access to this lead segment"); }
 async function requireLead(leadId: string) { const lead = (await db.select().from(leads).where(eq(leads.id, leadId)).limit(1))[0]; if (!lead) throw new Error("Lead not found"); return lead; }
 
 export async function createLead(formData: FormData) {
   const user = await requireUser();
-  const parsed = leadInput.safeParse({ type: formData.get("type"), companyName: formData.get("companyName"), contactName: formData.get("contactName"), phone: formData.get("phone"), email: formData.get("email") ?? "", linkedinUrl: formData.get("linkedinUrl") ?? "", status: formData.get("status"), comments: formData.get("comments") ?? "" });
+  const parsed = leadInput.safeParse({ type: formData.get("type"), ownerUserId: formData.get("ownerUserId"), companyName: formData.get("companyName"), contactName: formData.get("contactName"), phone: formData.get("phone"), email: formData.get("email") ?? "", linkedinUrl: formData.get("linkedinUrl") ?? "", status: formData.get("status"), comments: formData.get("comments") ?? "" });
   if (!parsed.success) throw new Error("Invalid lead details");
   await requireLeadTypeAccess(user.id, user.role, parsed.data.type);
-  const lead = (await db.insert(leads).values({ type: parsed.data.type, companyName: parsed.data.companyName, contactName: parsed.data.contactName, phone: parsed.data.phone, email: parsed.data.email || null, linkedinUrl: parsed.data.linkedinUrl || null, status: parsed.data.status, createdByUserId: user.id }).returning())[0];
+  const owner = (await db.select({ id: users.id }).from(users).where(and(eq(users.id, parsed.data.ownerUserId), eq(users.active, true))).limit(1))[0];
+  if (!owner) throw new Error("Lead owner must be an active portal user");
+  const lead = (await db.insert(leads).values({ type: parsed.data.type, ownerUserId: owner.id, companyName: parsed.data.companyName, contactName: parsed.data.contactName, phone: parsed.data.phone, email: parsed.data.email || null, linkedinUrl: parsed.data.linkedinUrl || null, status: parsed.data.status, createdByUserId: user.id }).returning())[0];
   if (parsed.data.comments) await db.insert(leadComments).values({ leadId: lead.id, userId: user.id, body: parsed.data.comments });
   await audit(user.id, "LEAD_CREATED", "LEAD", lead.id, { type: lead.type, status: lead.status });
   revalidatePath("/leads");
