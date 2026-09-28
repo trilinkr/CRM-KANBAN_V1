@@ -4,12 +4,13 @@ import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireUser } from "@/lib/auth";
-import { chatMessages, chatRoomMembers, chatRooms, db, notify, users } from "@/lib/domain";
+import { requireAdmin, requireUser } from "@/lib/auth";
+import { audit, chatMessages, chatRoomMembers, chatRooms, db, notify, users } from "@/lib/domain";
 
 const messageInput = z.object({ roomId: z.string().uuid(), body: z.string().trim().min(1, "Message cannot be empty").max(4000) });
 const privateRoomInput = z.object({ userId: z.string().uuid() });
 const groupInput = z.object({ name: z.string().trim().min(2).max(80), memberIds: z.array(z.string().uuid()).max(50) });
+const groupNameInput = z.object({ roomId: z.string().uuid(), name: z.string().trim().min(2).max(80) });
 
 async function accessibleRoom(roomId: string, userId: string) {
   return (await db.select({ room: chatRooms }).from(chatRoomMembers).innerJoin(chatRooms, eq(chatRoomMembers.roomId, chatRooms.id)).where(and(eq(chatRoomMembers.roomId, roomId), eq(chatRoomMembers.userId, userId))).limit(1))[0]?.room;
@@ -58,4 +59,28 @@ export async function createGroupRoom(formData: FormData) {
   await db.insert(chatRoomMembers).values(memberIds.map((userId) => ({ roomId: room.id, userId })));
   revalidatePath("/chat");
   redirect(`/chat?room=${room.id}`);
+}
+
+export async function updateGroupName(formData: FormData) {
+  const user = await requireUser();
+  const parsed = groupNameInput.safeParse({ roomId: formData.get("roomId"), name: formData.get("name") });
+  if (!parsed.success) throw new Error("Enter a valid group name");
+  const room = await accessibleRoom(parsed.data.roomId, user.id);
+  if (!room || room.type !== "GROUP") throw new Error("Group not found");
+  if (room.createdByUserId !== user.id && user.role !== "ADMIN") throw new Error("Only the group creator or an admin can rename this group");
+  await db.update(chatRooms).set({ name: parsed.data.name, updatedAt: new Date() }).where(eq(chatRooms.id, room.id));
+  revalidatePath("/chat");
+  redirect(`/chat?room=${room.id}`);
+}
+
+export async function deleteGroupRoom(formData: FormData) {
+  const admin = await requireAdmin();
+  const roomId = z.string().uuid().safeParse(formData.get("roomId"));
+  if (!roomId.success) throw new Error("Invalid group");
+  const room = (await db.select().from(chatRooms).where(eq(chatRooms.id, roomId.data)).limit(1))[0];
+  if (!room || room.type !== "GROUP") throw new Error("Group not found");
+  await db.delete(chatRooms).where(eq(chatRooms.id, room.id));
+  await audit(admin.id, "CHAT_GROUP_DELETED", "CHAT_ROOM", room.id, { name: room.name });
+  revalidatePath("/chat");
+  redirect("/chat");
 }
