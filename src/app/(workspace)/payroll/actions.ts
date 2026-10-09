@@ -5,6 +5,7 @@ import { z } from "zod";
 import { calculatePayroll, isPayrollMonth } from "@/lib/payroll";
 import { requireAdmin } from "@/lib/auth";
 import { audit, db, payrollRecords, users } from "@/lib/domain";
+import { getOrgCalendarParts } from "@/lib/time";
 const inputSchema = z.object({ userId: z.string().uuid(), month: z.string().refine(isPayrollMonth, "Invalid payroll month"), arrears: z.coerce.number().int().min(0).max(100000000) });
 export async function markPayrollPaid(formData: FormData) {
   const admin = await requireAdmin();
@@ -43,6 +44,21 @@ export async function removePayrollPayment(formData: FormData) {
   const record = (await db.select().from(payrollRecords).where(eq(payrollRecords.id, recordId)).limit(1))[0];
   if (!record) throw new Error("Payroll payment not found.");
   await audit(admin.id, "PAYROLL_PAYMENT_REMOVED", "PAYROLL", record.id, { userId: record.userId, month: record.payrollMonth, totalSalaryPaid: record.totalSalaryPaid });
+  await db.delete(payrollRecords).where(eq(payrollRecords.id, record.id));
+  revalidatePath("/payroll");
+  revalidatePath(`/payroll/${record.id}`);
+}
+
+export async function revokeCurrentMonthPayroll(formData: FormData) {
+  const admin = await requireAdmin();
+  const recordId = z.string().uuid().safeParse(formData.get("recordId"));
+  if (!recordId.success) throw new Error("Invalid payroll payment");
+  const current = getOrgCalendarParts();
+  const currentMonth = `${current.year}-${String(current.month).padStart(2, "0")}`;
+  const record = (await db.select().from(payrollRecords).where(eq(payrollRecords.id, recordId.data)).limit(1))[0];
+  if (!record) throw new Error("Payroll payment not found.");
+  if (record.payrollMonth !== currentMonth) throw new Error("Only the current month payroll can be revoked.");
+  await audit(admin.id, "PAYROLL_CURRENT_MONTH_REVOKED", "PAYROLL", record.id, { userId: record.userId, month: record.payrollMonth, totalSalaryPaid: record.totalSalaryPaid });
   await db.delete(payrollRecords).where(eq(payrollRecords.id, record.id));
   revalidatePath("/payroll");
   revalidatePath(`/payroll/${record.id}`);
