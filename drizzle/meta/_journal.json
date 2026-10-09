@@ -64,6 +64,13 @@
       "when": 1790599000000,
       "tag": "0008_lead_owners",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791630000000,
+      "tag": "0009_user_profile_fields",
+      "breakpoints": true
     }
   ]
 }
