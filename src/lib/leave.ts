@@ -1,10 +1,11 @@
 import { and, eq, gte, lte, lt } from "drizzle-orm";
 import { attendanceSessions, leaveOverrides } from "@/db/schema";
 import { db } from "./db";
+import { getFixedHoliday } from "./holidays";
 import { getOrgDateKey, getOrgMonthKeys, getOrgMonthRange, isScheduledWorkday } from "./time";
 
-export type LeaveDayStatus = "PRESENT" | "LEAVE" | "PENDING" | "OFF";
-export type LeaveDay = { dateKey: string; status: LeaveDayStatus; overridden: boolean };
+export type LeaveDayStatus = "PRESENT" | "LEAVE" | "PENDING" | "OFF" | "HOLIDAY";
+export type LeaveDay = { dateKey: string; status: LeaveDayStatus; overridden: boolean; holidayName?: string };
 
 export async function getLeaveCalendar(userId: string, now = new Date()) {
   const keys = getOrgMonthKeys(now);
@@ -19,9 +20,11 @@ export async function getLeaveCalendar(userId: string, now = new Date()) {
   const days: LeaveDay[] = keys.map((dateKey) => {
     if (!isScheduledWorkday(dateKey)) return { dateKey, status: "OFF", overridden: false };
     const override = overrideByDate.get(dateKey);
-    if (override) return { dateKey, status: override.status, overridden: true };
     if (presentDays.has(dateKey)) return { dateKey, status: "PRESENT", overridden: false };
+    if (override) return { dateKey, status: override.status, overridden: true };
+    const holiday = getFixedHoliday(dateKey);
+    if (holiday) return { dateKey, status: "HOLIDAY", overridden: false, holidayName: holiday.name };
     return { dateKey, status: dateKey < currentKey ? "LEAVE" : "PENDING", overridden: false };
   });
-  return { days, leaveDays: days.filter((day) => day.status === "LEAVE").length, presentDays: days.filter((day) => day.status === "PRESENT").length, pendingDays: days.filter((day) => day.status === "PENDING").length };
+  return { days, leaveDays: days.filter((day) => day.status === "LEAVE").length, presentDays: days.filter((day) => day.status === "PRESENT").length, pendingDays: days.filter((day) => day.status === "PENDING").length, holidayDays: days.filter((day) => day.status === "HOLIDAY").length };
 }
