@@ -16,18 +16,33 @@ async function accessibleRoom(roomId: string, userId: string) {
   return (await db.select({ room: chatRooms }).from(chatRoomMembers).innerJoin(chatRooms, eq(chatRoomMembers.roomId, chatRooms.id)).where(and(eq(chatRoomMembers.roomId, roomId), eq(chatRoomMembers.userId, userId))).limit(1))[0]?.room;
 }
 
-export async function sendMessage(formData: FormData) {
+export async function sendMessage(_previousState: { ok: boolean; message: string }, formData: FormData) {
   const user = await requireUser();
   const parsed = messageInput.safeParse({ roomId: formData.get("roomId"), body: formData.get("body") });
-  if (!parsed.success) throw new Error("Invalid chat message");
+  if (!parsed.success) return { ok: false, message: "Message cannot be empty." };
   const room = await accessibleRoom(parsed.data.roomId, user.id);
-  if (!room) throw new Error("You are not a member of this conversation");
+  if (!room) return { ok: false, message: "You are not a member of this conversation." };
   await db.insert(chatMessages).values({ roomId: room.id, senderUserId: user.id, body: parsed.data.body });
   await db.update(chatRooms).set({ updatedAt: new Date() }).where(eq(chatRooms.id, room.id));
 
   const roomMembers = await db.select({ member: users }).from(chatRoomMembers).innerJoin(users, eq(chatRoomMembers.userId, users.id)).where(eq(chatRoomMembers.roomId, room.id));
   const body = parsed.data.body.toLowerCase();
   await Promise.all(roomMembers.filter(({ member }) => member.id !== user.id && body.includes(`@${member.name.toLowerCase()}`)).map(({ member }) => notify(member.id, "CHAT_MENTION", `${user.name} mentioned you`, `${user.name} mentioned you in ${room.name}.`)));
+  revalidatePath("/chat");
+  return { ok: true, message: "Message sent." };
+}
+
+export async function deleteMessage(formData: FormData) {
+  const user = await requireUser();
+  const messageId = z.string().uuid().safeParse(formData.get("messageId"));
+  if (!messageId.success) throw new Error("Invalid message");
+  const message = (await db.select({ message: chatMessages, room: chatRooms }).from(chatMessages).innerJoin(chatRooms, eq(chatMessages.roomId, chatRooms.id)).where(eq(chatMessages.id, messageId.data)).limit(1))[0];
+  if (!message) throw new Error("Message not found");
+  const room = await accessibleRoom(message.room.id, user.id);
+  if (!room || (message.message.senderUserId !== user.id && user.role !== "ADMIN")) throw new Error("You cannot delete this message");
+  await db.delete(chatMessages).where(eq(chatMessages.id, message.message.id));
+  await db.update(chatRooms).set({ updatedAt: new Date() }).where(eq(chatRooms.id, message.room.id));
+  await audit(user.id, "CHAT_MESSAGE_DELETED", "CHAT_MESSAGE", message.message.id, { roomId: message.room.id, deletedByAdmin: user.role === "ADMIN" && message.message.senderUserId !== user.id });
   revalidatePath("/chat");
 }
 
