@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "./db";
-import { auditLogs, attendanceSessions, chatMessages, chatRoomMembers, chatRooms, kanbanBoards, kanbanColumns, leadAccess, leadComments, leads, leaveOverrides, notifications, taskActivities, taskComments, taskSubtasks, tasks, users } from "@/db/schema";
+import { auditLogs, attendanceSessions, chatMessages, chatRoomMembers, chatRooms, kanbanBoards, kanbanColumns, leadAccess, leadComments, leads, leaveOverrides, notifications, payrollRecords, taskActivities, taskComments, taskSubtasks, tasks, users } from "@/db/schema";
 import { alias } from "drizzle-orm/pg-core";
 import { getOrgDayRange } from "./time";
 
@@ -19,4 +19,4 @@ export async function activity(taskId: string, actorUserId: string, action: stri
 export async function getUnreadCount(userId: string) { const row = (await db.select({ count: sql<number>`count(*)` }).from(notifications).where(and(eq(notifications.recipientUserId, userId), isNull(notifications.readAt))))[0]; return Number(row?.count ?? 0); }
 export async function getTodayAttendance(userId: string) { const { start, end } = getOrgDayRange(); return db.select().from(attendanceSessions).where(and(eq(attendanceSessions.userId, userId), lt(attendanceSessions.checkInAt, end), or(isNull(attendanceSessions.checkOutAt), gte(attendanceSessions.checkOutAt, start)))).orderBy(desc(attendanceSessions.checkInAt)); }
 export async function getTask(taskId: string) { const creator = alias(users, "creator"); const assignee = alias(users, "assignee"); return (await db.select({ task: tasks, creator, assignee }).from(tasks).innerJoin(creator, eq(tasks.createdByUserId, creator.id)).innerJoin(assignee, eq(tasks.assignedToUserId, assignee.id)).where(eq(tasks.id, taskId)).limit(1))[0]; }
-export { db, users, tasks, notifications, attendanceSessions, leaveOverrides, taskComments, taskActivities, taskSubtasks, kanbanColumns, kanbanBoards, auditLogs, chatRooms, chatRoomMembers, chatMessages, leads, leadComments, leadAccess };
+export { db, users, tasks, notifications, attendanceSessions, leaveOverrides, taskComments, taskActivities, taskSubtasks, kanbanColumns, kanbanBoards, auditLogs, chatRooms, chatRoomMembers, chatMessages, leads, leadComments, leadAccess, payrollRecords };

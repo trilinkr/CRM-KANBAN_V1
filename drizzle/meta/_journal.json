@@ -71,6 +71,13 @@
       "when": 1791630000000,
       "tag": "0009_user_profile_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791631000000,
+      "tag": "0010_payroll_records",
+      "breakpoints": true
     }
   ]
 }
