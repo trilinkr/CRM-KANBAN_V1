@@ -7,6 +7,7 @@ import { requireAdmin } from "@/lib/auth";
 import { audit, db, payrollRecords, users } from "@/lib/domain";
 import { getOrgCalendarParts } from "@/lib/time";
 const inputSchema = z.object({ userId: z.string().uuid(), month: z.string().refine(isPayrollMonth, "Invalid payroll month"), arrears: z.coerce.number().int().min(0).max(100000000) });
+function previousMonth(month: string) { const [year, monthNumber] = month.split("-").map(Number); const date = new Date(Date.UTC(year, monthNumber - 2, 1)); return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`; }
 export async function markPayrollPaid(formData: FormData) {
   const admin = await requireAdmin();
   const parsed = inputSchema.safeParse({ userId: formData.get("userId"), month: formData.get("month"), arrears: formData.get("arrears") || "0" });
@@ -17,9 +18,12 @@ export async function markPayrollPaid(formData: FormData) {
   if (existing) throw new Error("Payroll is already marked as paid for this month.");
   const metrics = await calculatePayroll(member.id, parsed.data.month);
   const attendanceSalary = Math.round(member.monthlySalary / metrics.totalDays * metrics.presentDays);
-  const totalSalaryPaid = attendanceSalary + parsed.data.arrears;
-  const record = (await db.insert(payrollRecords).values({ userId: member.id, payrollMonth: parsed.data.month, monthlySalary: member.monthlySalary, totalDays: metrics.totalDays, workingDays: metrics.workingDays, presentDays: metrics.presentDays, attendanceSalary, arrears: parsed.data.arrears, totalSalaryPaid, paidByUserId: admin.id }).returning({ id: payrollRecords.id }))[0];
-  await audit(admin.id, "PAYROLL_MARKED_PAID", "PAYROLL", record.id, { userId: member.id, month: parsed.data.month, presentDays: metrics.presentDays, arrears: parsed.data.arrears });
+  const previous = (await db.select({ arrears: payrollRecords.arrears }).from(payrollRecords).where(and(eq(payrollRecords.userId, member.id), eq(payrollRecords.payrollMonth, previousMonth(parsed.data.month)))).limit(1))[0];
+  const carriedArrears = previous?.arrears ?? 0;
+  const totalArrears = carriedArrears + parsed.data.arrears;
+  const totalSalaryPaid = attendanceSalary + totalArrears;
+  const record = (await db.insert(payrollRecords).values({ userId: member.id, payrollMonth: parsed.data.month, monthlySalary: member.monthlySalary, totalDays: metrics.totalDays, workingDays: metrics.workingDays, presentDays: metrics.presentDays, attendanceSalary, arrears: totalArrears, totalSalaryPaid, paidByUserId: admin.id }).returning({ id: payrollRecords.id }))[0];
+  await audit(admin.id, "PAYROLL_MARKED_PAID", "PAYROLL", record.id, { userId: member.id, month: parsed.data.month, presentDays: metrics.presentDays, arrears: totalArrears, carriedArrears, additionalArrears: parsed.data.arrears });
   revalidatePath("/payroll");
 }
 
