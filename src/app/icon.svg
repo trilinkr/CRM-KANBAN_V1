@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>TriLinkr</title>
+  <rect width="64" height="64" rx="14" fill="#fff7f1"/>
+  <path fill="#ff6500" d="M32 7 54 18v20c0 9-8 16-22 22C18 54 10 47 10 38V18L32 7Z"/>
+  <path fill="#fff7f1" d="M32 13 16 21v16c0 5 4 10 11 14V28l-7 5 5-12 7 7V13Zm0 0v15l7-7 5 12-7-5v23c7-4 11-9 11-14V21l-16-8Z"/>
+  <path fill="#ff6500" d="M29 18h6v31h-6z"/>
+  <path fill="#ff6500" d="m25 18 7-7 7 7-7-4-7 4Z"/>
+</svg>
