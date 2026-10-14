@@ -85,6 +85,13 @@
       "when": 1792000000000,
       "tag": "0011_task_archives",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792001000000,
+      "tag": "0012_repair_completed_tasks",
+      "breakpoints": true
     }
   ]
 }
