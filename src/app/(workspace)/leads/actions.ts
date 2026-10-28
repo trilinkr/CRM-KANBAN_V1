@@ -9,6 +9,19 @@ import { audit, db, leadAccess, leadComments, leads, users } from "@/lib/domain"
 import { canAccessLeadType, type LeadType } from "@/lib/leads";
 
 const leadStatus = z.enum(["NEW", "INTRO_SENT", "FOLLOW_UP", "WHATSAPP", "ONBOARDED", "DROPPED"]);
+export async function setLeadArchived(_state: { ok: boolean; message: string }, form: FormData) {
+  const user = await requireUser();
+  const parsed = z.object({ leadId: z.string().uuid(), archived: z.enum(["true", "false"]) }).safeParse({ leadId: form.get("leadId"), archived: form.get("archived") });
+  if (!parsed.success) return { ok: false, message: "Invalid lead." };
+  const lead = await requireLead(parsed.data.leadId);
+  if (!(await canAccessLeadType(user.id, user.role, lead.type))) return { ok: false, message: "You do not have access to this lead segment." };
+  const archived = parsed.data.archived === "true";
+  await db.update(leads).set({ archivedAt: archived ? new Date() : null, updatedAt: new Date() }).where(eq(leads.id, lead.id));
+  await audit(user.id, archived ? "LEAD_ARCHIVED" : "LEAD_RESTORED", "LEAD", lead.id, { type: lead.type });
+  revalidatePath("/leads");
+  revalidatePath("/leads/" + lead.id);
+  return { ok: true, message: archived ? "Lead archived." : "Lead restored." };
+}
 const leadType = z.enum(["EMPLOYER", "CONSULTANT"]);
 const optionalEmail = z.string().trim().email().or(z.literal(""));
 const leadInput = z.object({ type: leadType, ownerUserId: z.string().uuid(), companyName: z.string().trim().min(1).max(180), contactName: z.string().trim().min(1).max(140), phone: z.string().trim().min(5).max(40), email: optionalEmail, linkedinUrl: z.string().trim().url().or(z.literal("")), status: leadStatus, comments: z.string().trim().max(5000) });
