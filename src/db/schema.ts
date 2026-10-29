@@ -9,6 +9,7 @@ export const leadTypeEnum = pgEnum("lead_type", ["EMPLOYER", "CONSULTANT"]);
 export const leadStatusEnum = pgEnum("lead_status", ["NEW", "INTRO_SENT", "FOLLOW_UP", "WHATSAPP", "ONBOARDED", "DROPPED"]);
 
 const timestamps = { createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull() };
+export const workspaceSettings = pgTable("workspace_settings", { key: text("key").primaryKey(), value: text("value").notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull() });
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(), name: text("name").notNull(), email: text("email").notNull(), phone: text("phone"), dateOfBirth: date("date_of_birth"), monthlySalary: integer("monthly_salary"), dateOfJoining: date("date_of_joining"), passwordHash: text("password_hash").notNull(), role: roleEnum("role").default("MEMBER").notNull(), active: boolean("active").default(true).notNull(), forcePasswordChange: boolean("force_password_change").default(true).notNull(), deactivatedAt: timestamp("deactivated_at", { withTimezone: true }), ...timestamps,
