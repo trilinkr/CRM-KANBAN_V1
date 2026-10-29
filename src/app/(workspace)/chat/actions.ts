@@ -1,13 +1,16 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { chatImages } from "@/db/schema";
+import { validateChatImage } from "@/lib/validate-chat-image";
+import { MAX_CHAT_STORAGE_BYTES } from "@/lib/chat-image-limits";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin, requireUser } from "@/lib/auth";
 import { audit, chatMessages, chatRoomMembers, chatRooms, db, notify, users } from "@/lib/domain";
 
-const messageInput = z.object({ roomId: z.string().uuid(), body: z.string().trim().min(1, "Message cannot be empty").max(4000) });
+const messageInput = z.object({ roomId: z.string().uuid(), body: z.string().trim().max(4000) });
 const privateRoomInput = z.object({ userId: z.string().uuid() });
 const groupInput = z.object({ name: z.string().trim().min(2).max(80), memberIds: z.array(z.string().uuid()).max(50) });
 const groupNameInput = z.object({ roomId: z.string().uuid(), name: z.string().trim().min(2).max(80) });
@@ -19,11 +22,32 @@ async function accessibleRoom(roomId: string, userId: string) {
 export async function sendMessage(_previousState: { ok: boolean; message: string }, formData: FormData) {
   const user = await requireUser();
   const parsed = messageInput.safeParse({ roomId: formData.get("roomId"), body: formData.get("body") });
-  if (!parsed.success) return { ok: false, message: "Message cannot be empty." };
+  if (!parsed.success) return { ok: false, message: "Enter a valid message (up to 4,000 characters)." };
+  const attachment = formData.get("image");
+  const file = attachment instanceof File && attachment.size > 0 ? attachment : null;
+  if (!parsed.data.body && !file) return { ok: false, message: "Add a message or an image." };
   const room = await accessibleRoom(parsed.data.roomId, user.id);
   if (!room) return { ok: false, message: "You are not a member of this conversation." };
-  await db.insert(chatMessages).values({ roomId: room.id, senderUserId: user.id, body: parsed.data.body });
-  await db.update(chatRooms).set({ updatedAt: new Date() }).where(eq(chatRooms.id, room.id));
+  let image: Buffer | null = null;
+  if (file) {
+    try { image = await validateChatImage(file); }
+    catch { return { ok: false, message: "Unable to prepare the image. Use a still JPG, PNG, or WebP under 350 KB and 1,600 pixels." }; }
+  }
+  const sent = await db.transaction(async (tx) => {
+    // Lock the room against deletion until the message and optional image are saved.
+    const [currentRoom] = await tx.select({ id: chatRooms.id }).from(chatRooms).where(eq(chatRooms.id, room.id)).for("update");
+    if (!currentRoom) return false;
+    if (image) {
+      await tx.execute(sql`select pg_advisory_xact_lock(736415)`);
+      const [usage] = await tx.select({ bytes: sql<number>`coalesce(sum(${chatImages.size}), 0)` }).from(chatImages);
+      if (Number(usage.bytes) + image.length > MAX_CHAT_STORAGE_BYTES) return false;
+    }
+    const [message] = await tx.insert(chatMessages).values({ roomId: room.id, senderUserId: user.id, body: parsed.data.body }).returning({ id: chatMessages.id });
+    if (image) await tx.insert(chatImages).values({ messageId: message.id, data: image, size: image.length });
+    await tx.update(chatRooms).set({ updatedAt: new Date() }).where(eq(chatRooms.id, room.id));
+    return true;
+  });
+  if (!sent) return { ok: false, message: "Image storage is full or this conversation is no longer available. Remove older image messages or contact your admin." };
 
   const roomMembers = await db.select({ member: users }).from(chatRoomMembers).innerJoin(users, eq(chatRoomMembers.userId, users.id)).where(eq(chatRoomMembers.roomId, room.id));
   const body = parsed.data.body.toLowerCase();
